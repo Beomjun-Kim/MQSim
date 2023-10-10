@@ -53,6 +53,9 @@ namespace SSD_Components
 		virtual void Handle_new_arrived_request(User_Request* request) = 0;
 		virtual void Handle_arrived_write_data(User_Request* request) = 0;
 		virtual void Handle_serviced_request(User_Request* request) = 0;
+		virtual int get_outstanding_requests() = 0; //JY_Modified_Debug
+		virtual int get_submitted_requests() = 0; //JY_Modified_Debug
+
 		void Update_transaction_statistics(NVM_Transaction* transaction);
 		uint32_t Get_average_read_transaction_turnaround_time(stream_id_type stream_id);//in microseconds
 		uint32_t Get_average_read_transaction_execution_time(stream_id_type stream_id);//in microseconds
@@ -123,10 +126,21 @@ namespace SSD_Components
 		void Send_read_message_to_host(uint64_t addresss, unsigned int request_read_data_size);
 		void Send_write_message_to_host(uint64_t addresss, void* message, unsigned int message_size);
 
+		int get_outstanding_requests() //JY_Modified_Debug
+		{
+			return input_stream_manager->get_outstanding_requests();
+
+		}
+		int get_submitted_requests() //JY_Modified_Debug
+		{
+			return input_stream_manager->get_submitted_requests();
+		}
+
 		HostInterface_Types GetType() { return type; }
 		void Attach_to_device(Host_Components::PCIe_Switch* pcie_switch);
 		LHA_type Get_max_logical_sector_address();
 		unsigned int Get_no_of_LHAs_in_an_NVM_write_unit();
+		Data_Cache_Manager_Base* cache; //JY_Modified_GC
 	protected:
 		HostInterface_Types type;
 		LHA_type max_logical_sector_address;
@@ -134,7 +148,7 @@ namespace SSD_Components
 		static Host_Interface_Base* _my_instance;
 		Input_Stream_Manager_Base* input_stream_manager;
 		Request_Fetch_Unit_Base* request_fetch_unit;
-		Data_Cache_Manager_Base* cache;
+		//Data_Cache_Manager_Base* cache; //JY_Modified_GC
 		std::vector<UserRequestArrivedSignalHandlerType> connected_user_request_arrived_signal_handlers;
 
 		void broadcast_user_request_arrival_signal(User_Request* user_request)

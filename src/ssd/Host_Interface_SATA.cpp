@@ -114,6 +114,17 @@ namespace SSD_Components
 		DELETE_REQUEST_NVME(request);
 	}
 
+
+	inline int Input_Stream_Manager_SATA::get_outstanding_requests() //JY_Modified_Debug
+	{
+		return 1;
+	}
+
+	inline int Input_Stream_Manager_SATA::get_submitted_requests() //JY_Modified_Debug
+	{
+		return 2;
+	}
+
 	inline void Input_Stream_Manager_SATA::inform_host_request_completed(User_Request* request)
 	{
 		((Request_Fetch_Unit_SATA*)((Host_Interface_SATA*)host_interface)->request_fetch_unit)->Send_completion_queue_element(request, ((Input_Stream_SATA*)input_streams[SATA_STREAM_ID])->Submission_head_informed_to_host);

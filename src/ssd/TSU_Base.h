@@ -46,6 +46,11 @@ public:
 		*/
 	void Prepare_for_transaction_submit()
 	{
+		
+		/*
+		if (opened_scheduling_reqs > 1) {
+			printf("Submitted transaction: %d\n", opened_scheduling_reqs);
+		}*/
 		opened_scheduling_reqs++;
 		if (opened_scheduling_reqs > 1)
 		{
@@ -59,11 +64,18 @@ public:
 		transaction_receive_slots.push_back(transaction);
 	}
 
+	int get_size_of_requests_chip(NVM::FlashMemory::Flash_Chip* chip) { //JY_Modified_Debug
+		return get_size_of_requests(chip);
+	}
 	/* Shedules the transactions currently stored in inputTransactionSlots. The transactions could
 		* be mixes of reads, writes, and erases.
 		*/
 	virtual void Schedule() = 0;
 	virtual void Report_results_in_XML(std::string name_prefix, Utils::XmlWriter &xmlwriter);
+
+	int get_total_transactions() { //JY_Modified_Debug
+		return (transaction_receive_slots.size() + transaction_dispatch_slots.size());
+	}
 
 protected:
 	FTL *ftl;
@@ -85,6 +97,7 @@ protected:
 	virtual bool service_read_transaction(NVM::FlashMemory::Flash_Chip *chip) = 0;
 	virtual bool service_write_transaction(NVM::FlashMemory::Flash_Chip *chip) = 0;
 	virtual bool service_erase_transaction(NVM::FlashMemory::Flash_Chip *chip) = 0;
+	virtual int get_size_of_requests(NVM::FlashMemory::Flash_Chip* chip) = 0; //JY_Modified_Debug
 	bool issue_command_to_chip(Flash_Transaction_Queue *sourceQueue1, Flash_Transaction_Queue *sourceQueue2, Transaction_Type transactionType, bool suspensionRequired);
 	static void handle_transaction_serviced_signal_from_PHY(NVM_Transaction_Flash *transaction);
 	static void handle_channel_idle_signal(flash_channel_ID_type);

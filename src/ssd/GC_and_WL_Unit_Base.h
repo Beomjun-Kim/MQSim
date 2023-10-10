@@ -52,12 +52,20 @@ namespace SSD_Components
 
 		virtual bool GC_is_in_urgent_mode(const NVM::FlashMemory::Flash_Chip*) = 0;
 		virtual void Check_gc_required(const unsigned int BlockPoolSize, const NVM::FlashMemory::Physical_Page_Address& planeAddress) = 0;
+		virtual void Check_rr_required(const NVM::FlashMemory::Physical_Page_Address& page_address) = 0; //JY_Modified_RD
 		GC_Block_Selection_Policy_Type Get_gc_policy();
 		unsigned int Get_GC_policy_specific_parameter();//Returns the parameter specific to the GC block selection policy: threshold for random_pp, set_size for RGA
 		unsigned int Get_minimum_number_of_free_pages_before_GC();
 		bool Use_dynamic_wearleveling();
 		bool Use_static_wearleveling();
 		bool Stop_servicing_writes(const NVM::FlashMemory::Physical_Page_Address& plane_address);
+		void public_handle_transaction_serviced_signal_from_PHY(NVM_Transaction_Flash* transaction); //JY_Modified
+		void adjust_gc_threshold(); //JY_Modified_GC
+		unsigned int block_pool_gc_threshold; //JY_Modified_GC
+
+		unsigned int rr_registered; //JY_Modified_RD
+		unsigned int rr_occurred; //JY_Modified_RD
+		unsigned int erase_occurred; //JY_Modified_RD
 	protected:
 		GC_Block_Selection_Policy_Type block_selection_policy;
 		static GC_and_WL_Unit_Base * _my_instance;
@@ -67,7 +75,7 @@ namespace SSD_Components
 		NVM_PHY_ONFI* flash_controller;
 		bool force_gc;
 		double gc_threshold;//As the ratio of free pages to the total number of physical pages
-		unsigned int block_pool_gc_threshold;
+		//unsigned int block_pool_gc_threshold; //JY_Modified_GC
 		static void handle_transaction_serviced_signal_from_PHY(NVM_Transaction_Flash* transaction);
 		bool is_safe_gc_wl_candidate(const PlaneBookKeepingType* pbke, const flash_block_ID_type gc_wl_candidate_block_id);//Checks if block_address is a safe candidate for gc execution, i.e., 1) it is not a write frontier, and 2) there is no ongoing program operation
 		bool check_static_wl_required(const NVM::FlashMemory::Physical_Page_Address plane_address);
@@ -82,6 +90,10 @@ namespace SSD_Components
 		double gc_hard_threshold;
 		unsigned int block_pool_gc_hard_threshold;
 		unsigned int max_ongoing_gc_reqs_per_plane;//This value has two important usages: 1) maximum number of concurrent gc operations per plane, and 2) the value that determines urgent GC execution when there is a shortage of flash blocks. If the block bool size drops below this value, all incomming user writes should be blocked
+		//unsigned int rr_registered; //JY_Modified_RD
+		//unsigned int rr_occurred; //JY_Modified_RD
+		//unsigned int erase_occurred; //JY_Modified_RD
+
 
 		//Following variabels are used based on the type of GC block selection policy
 		unsigned int rga_set_size;//The number of random flash blocks that are radnomly selected 
@@ -96,6 +108,7 @@ namespace SSD_Components
 		unsigned int block_no_per_plane;
 		unsigned int pages_no_per_block;
 		unsigned int sector_no_per_page;
+
 	};
 }
 

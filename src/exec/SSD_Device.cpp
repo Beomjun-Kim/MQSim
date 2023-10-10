@@ -307,7 +307,7 @@ SSD_Device::SSD_Device(Device_Parameter_Set *parameters, std::vector<IO_Flow_Par
 															 parameters->Flash_Channel_Count, parameters->Chip_No_Per_Channel,
 															 parameters->Flash_Parameters.Die_No_Per_Chip, parameters->Flash_Parameters.Plane_No_Per_Die,
 															 parameters->Flash_Parameters.Block_No_Per_Plane, parameters->Flash_Parameters.Page_No_Per_Block,
-															 parameters->Flash_Parameters.Page_Capacity / SECTOR_SIZE_IN_BYTE, parameters->Use_Copyback_for_GC, max_rho, 10,
+															 parameters->Flash_Parameters.Page_Capacity / SECTOR_SIZE_IN_BYTE, parameters->Use_Copyback_for_GC, max_rho, 1,
 															 parameters->Seed++);
 		Simulator->AddObject(gcwl);
 		fbm->Set_GC_and_WL_Unit(gcwl);
@@ -436,13 +436,76 @@ void SSD_Device::Report_results_in_XML(std::string name_prefix, Utils::XmlWriter
 		((SSD_Components::FTL *)this->Firmware)->Report_results_in_XML(ID(), xmlwriter);
 		((SSD_Components::FTL *)this->Firmware)->TSU->Report_results_in_XML(ID(), xmlwriter);
 
+		//JY_Modified_Debug_Start
+		int od_req = ((SSD_Components::Host_Interface_Base*)this->Host_interface)->get_outstanding_requests();
+		int sb_req = ((SSD_Components::Host_Interface_Base*)this->Host_interface)->get_submitted_requests();
+
+		printf("Outstanding_requests: %d\n", od_req);
+		printf("Submitted_requests: %d\n", sb_req); 
+		//JY_Modified_Debug_End
+
 		for (unsigned int channel_cntr = 0; channel_cntr < Channel_count; channel_cntr++)
 		{
+
+			//JY_Modified_Start
+			SSD_Components::BusChannelStatus chnl_status = ((SSD_Components::ONFI_Channel_NVDDR2*)Channels[channel_cntr])->GetStatus(); //JY_Modified
+			//BUSY: 0
+			printf("Channel %u\n", channel_cntr);
+			if((int)chnl_status == 0){
+				printf("Channel status: BUSY\n");
+			}
+			else if ((int)chnl_status == 1) {
+				printf("Channel status: IDLE\n");
+			}
+			else {
+				printf("Channel status: Something wrong\n");
+			}
+			//JY_Modified_End
+
 			for (unsigned int chip_cntr = 0; chip_cntr < Chip_no_per_channel; chip_cntr++)
 			{
 				((SSD_Components::ONFI_Channel_NVDDR2 *)Channels[channel_cntr])->Chips[chip_cntr]->Report_results_in_XML(ID(), xmlwriter);
+		
+				//JY_Modified_Start
+				int chip_status = ((SSD_Components::ONFI_Channel_NVDDR2*)Channels[channel_cntr])->Chips[chip_cntr]->GetStatus(); //JY_Modified
+				//BUSY: 1
+				printf("Chip %u\n", chip_cntr);
+				if ((int)chip_status == 0) {
+					printf("Chip status: IDLE\n");
+				}
+				else if ((int)chip_status == 1) {
+					printf("Chip status: BUSY\n");
+				}
+				else {
+					printf("Chip status: Something wrong\n");
+				}
+				//JY_Modified_End
+				
+
+				int num_requests = ((SSD_Components::FTL*)this->Firmware)->TSU->get_size_of_requests_chip(((SSD_Components::ONFI_Channel_NVDDR2*)Channels[channel_cntr])->Chips[chip_cntr]);
+				printf("Num of per-chip requests: %d\n", num_requests);
+
+
 			}
 		}
+	
+		//JY_Modified_Debug_Start
+		int total_requests = ((SSD_Components::FTL*)this->Firmware)->TSU->get_total_transactions();
+		printf("Total transactions: %d\n", total_requests);
+		
+		int num_set_barriers = ((SSD_Components::FTL*)this->Firmware)->Address_Mapping_Unit->num_set_barriers;
+		int num_remove_barriers = ((SSD_Components::FTL*)this->Firmware)->Address_Mapping_Unit->num_remove_barriers;
+		printf("Num_set barriers: %d, Num_remove_barriers: %d\n", num_set_barriers, num_remove_barriers);
+		
+		int rr_registered = ((SSD_Components::FTL*)this->Firmware)->GC_and_WL_Unit->rr_registered;
+		int erase_occurred = ((SSD_Components::FTL*)this->Firmware)->GC_and_WL_Unit->erase_occurred;
+		int rr_occurred = ((SSD_Components::FTL*)this->Firmware)->GC_and_WL_Unit->rr_occurred;
+
+		printf("RR registered: %d, RR_occurred: %d,  Erase occurred: %d\n", rr_registered, rr_occurred, erase_occurred);
+
+		//JY_Modified_Debug_End
+
+
 	}
 	xmlwriter.Write_close_tag();
 }

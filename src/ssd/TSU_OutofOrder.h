@@ -54,6 +54,8 @@ private:
 	bool service_read_transaction(NVM::FlashMemory::Flash_Chip *chip);
 	bool service_write_transaction(NVM::FlashMemory::Flash_Chip *chip);
 	bool service_erase_transaction(NVM::FlashMemory::Flash_Chip *chip);
+
+	int get_size_of_requests(NVM::FlashMemory::Flash_Chip* chip); //JY_Modified_Debug
 };
 } // namespace SSD_Components
 

@@ -481,6 +481,8 @@ namespace SSD_Components
 	{
 		for (std::list<NVM_Transaction*>::const_iterator it = transactionList.begin();
 			it != transactionList.end(); ) {
+	
+			//printf("Debug: Locked size: %lu\n", domains[(*it)->Stream_id]->Locked_LPAs.size());
 			if (is_lpa_locked_for_gc((*it)->Stream_id, ((NVM_Transaction_Flash*)(*it))->LPA)) {
 				//iterator should be post-incremented since the iterator may be deleted from list
 				manage_user_transaction_facing_barrier((NVM_Transaction_Flash*)*(it++));
@@ -591,7 +593,7 @@ namespace SSD_Components
 			}
 			transaction->PPA = ppa;
 			Convert_ppa_to_address(transaction->PPA, transaction->Address);
-			block_manager->Read_transaction_issued(transaction->Address);
+			block_manager->Read_transaction_issued(transaction->Address, 0);
 			transaction->Physical_address_determined = true;
 			
 			return true;
@@ -735,7 +737,9 @@ namespace SSD_Components
 							}
 						}
 						if (assigned_lpas[plane_address.ChannelID][plane_address.ChipID][plane_address.DieID][plane_address.PlaneID].size() > 0) {
-							PRINT_ERROR("It is not possible to assign PPA to all LPAs in Allocate_address_for_preconditioning! It is not safe to continue preconditioning." << assigned_lpas[plane_address.ChannelID][plane_address.ChipID][plane_address.DieID][plane_address.PlaneID].size())
+							//PRINT_ERROR("It is not possible to assign PPA to all LPAs in Allocate_address_for_preconditioning! It is not safe to continue preconditioning." << assigned_lpas[plane_address.ChannelID][plane_address.ChipID][plane_address.DieID][plane_address.PlaneID].size())
+							printf("It is not possible to assign PPA to all LPAs in Allocate_address_for_preconditioning! It is not safe to continue preconditioning.\n");
+
 						}
 					}
 				}
@@ -1175,7 +1179,7 @@ namespace SSD_Components
 						count_sector_no_from_status_bitmap(read_pages_bitmap) * SECTOR_SIZE_IN_BYTE, transaction->LPA, old_ppa, transaction->UserIORequest,
 						transaction->Content, transaction, read_pages_bitmap, domain->GlobalMappingTable[transaction->LPA].TimeStamp);
 					Convert_ppa_to_address(old_ppa, update_read_tr->Address);
-					block_manager->Read_transaction_issued(update_read_tr->Address);//Inform block manager about a new transaction as soon as the transaction's target address is determined
+					block_manager->Read_transaction_issued(update_read_tr->Address, 1);//Inform block manager about a new transaction as soon as the transaction's target address is determined
 					block_manager->Invalidate_page_in_block(transaction->Stream_id, update_read_tr->Address);
 					transaction->RelatedRead = update_read_tr;
 				}
@@ -1190,6 +1194,7 @@ namespace SSD_Components
 		} else {
 			block_manager->Allocate_block_and_page_in_plane_for_user_write(transaction->Stream_id, transaction->Address);
 		}
+
 		transaction->PPA = Convert_address_to_ppa(transaction->Address);
 		domain->Update_mapping_info(ideal_mapping_table, transaction->Stream_id, transaction->LPA, transaction->PPA,
 			((NVM_Transaction_Flash_WR*)transaction)->write_sectors_bitmap | domain->Get_page_status(ideal_mapping_table, transaction->Stream_id, transaction->LPA));
@@ -1378,9 +1383,11 @@ namespace SSD_Components
 				PRINT_ERROR("Unknown plane allocation scheme type!")
 		}
 
-		block_manager->Allocate_block_and_page_in_plane_for_user_write(stream_id, read_address);
+		block_manager->Allocate_block_and_page_in_plane_for_online_write(stream_id, read_address); //JY_Modified
 		PPA_type ppa = Convert_address_to_ppa(read_address);
 		domain->Update_mapping_info(ideal_mapping_table, stream_id, lpa, ppa, read_sectors_bitmap);
+			
+		flash_controller->Set_metadata(read_address.ChannelID, read_address.ChipID, read_address.DieID, read_address.PlaneID, read_address.BlockID, read_address.PageID, lpa); //JY_Modified
 
 		return ppa;
 	}
@@ -1606,7 +1613,7 @@ namespace SSD_Components
 				readTR = new NVM_Transaction_Flash_RD(Transaction_Source_Type::MAPPING, stream_id, read_size,
 					mvpn, mppn, NULL, mvpn, NULL, readSectorsBitmap, CurrentTimeStamp);
 				Convert_ppa_to_address(mppn, readTR->Address);
-				block_manager->Read_transaction_issued(readTR->Address);//Inform block_manager as soon as the transaction's target address is determined
+				block_manager->Read_transaction_issued(readTR->Address, 0);//Inform block_manager as soon as the transaction's target address is determined
 				domains[stream_id]->ArrivingMappingEntries.insert(std::pair<MVPN_type, LPA_type>(mvpn, lpn));
 				ftl->TSU->Submit_transaction(readTR);
 			}
@@ -1651,7 +1658,7 @@ namespace SSD_Components
 			NVM_Transaction_Flash_RD* readTR = new NVM_Transaction_Flash_RD(Transaction_Source_Type::MAPPING, stream_id,
 					SECTOR_SIZE_IN_BYTE, NO_LPA, NO_PPA, NULL, mvpn, ((page_status_type)0x1) << sector_no_per_page, CurrentTimeStamp);
 			Convert_ppa_to_address(ppn, readTR->Address);
-			block_manager->Read_transaction_issued(readTR->Address);//Inform block_manager as soon as the transaction's target address is determined
+			block_manager->Read_transaction_issued(readTR->Address, 0);//Inform block_manager as soon as the transaction's target address is determined
 			readTR->PPA = ppn;
 			ftl->TSU->Submit_transaction(readTR);
 
@@ -1664,6 +1671,7 @@ namespace SSD_Components
 
 	inline void Address_Mapping_Unit_Page_Level::handle_transaction_serviced_signal_from_PHY(NVM_Transaction_Flash* transaction)
 	{
+		
 		//First check if the transaction source is Mapping Module
 		if (transaction->Source != Transaction_Source_Type::MAPPING) {
 			return;
@@ -1754,6 +1762,8 @@ namespace SSD_Components
 			PRINT_ERROR("Illegal operation: Locking an LPA that has already been locked!");
 		}
 		domains[stream_id]->Locked_LPAs.insert(lpa);
+	
+		num_set_barriers++; //JY_Modified_Debug
 	}
 
 	inline void Address_Mapping_Unit_Page_Level::Set_barrier_for_accessing_mvpn(stream_id_type stream_id, MVPN_type mvpn)
@@ -1777,8 +1787,8 @@ namespace SSD_Components
 					MVPN_type mpvn = (MVPN_type)flash_controller->Get_metadata(addr.ChannelID, addr.ChipID, addr.DieID, addr.PlaneID, addr.BlockID, addr.PageID);
 					if (domains[block->Stream_id]->GlobalTranslationDirectory[mpvn].MPPN != Convert_address_to_ppa(addr)) {
 						PRINT_ERROR("Inconsistency in the global translation directory when locking an MPVN!")
+						Set_barrier_for_accessing_mvpn(block->Stream_id, mpvn);
 					}
-					Set_barrier_for_accessing_mvpn(block->Stream_id, mpvn);
 				} else {
 					LPA_type lpa = flash_controller->Get_metadata(addr.ChannelID, addr.ChipID, addr.DieID, addr.PlaneID, addr.BlockID, addr.PageID);
 					LPA_type ppa = domains[block->Stream_id]->GlobalMappingTable[lpa].PPA;
@@ -1788,6 +1798,7 @@ namespace SSD_Components
 					if (ppa != Convert_address_to_ppa(addr)) {
 						PRINT_ERROR("Inconsistency in the global mapping table when locking an LPA!")
 					}
+
 					Set_barrier_for_accessing_lpa(block->Stream_id, lpa);
 				}
 			}
@@ -1800,25 +1811,61 @@ namespace SSD_Components
 		if (itr == domains[stream_id]->Locked_LPAs.end()) {
 			PRINT_ERROR("Illegal operation: Unlocking an LPA that has not been locked!");
 		}
+		
+		num_remove_barriers++; //JY_Modified_Debug
+
+		//printf("Locekd Size before: %d\n", domains[stream_id]->Locked_LPAs.size());
 		domains[stream_id]->Locked_LPAs.erase(itr);
 
+		//printf("Locekd Size after: %d\n", domains[stream_id]->Locked_LPAs.size());
+		
+		//printf("Enter the barrier\n");
 		//If there are read requests waiting behind the barrier, then MQSim assumes they can be serviced with the actual page data that is accessed during GC execution
 		auto read_tr = domains[stream_id]->Read_transactions_behind_LPA_barrier.find(lpa);
 		while (read_tr != domains[stream_id]->Read_transactions_behind_LPA_barrier.end()) {
-			handle_transaction_serviced_signal_from_PHY((*read_tr).second);
-			delete (*read_tr).second;
+			//handle_transaction_serviced_signal_from_PHY((*read_tr).second);
+			//ftl->GC_and_WL_Unit->public_handle_transaction_serviced_signal_from_PHY((*read_tr).second); //JY_Modified_RD
+			int prev_read = domains[stream_id]->Read_transactions_behind_LPA_barrier.size();
+
+			ftl->PHY->public_broadcastTransactionServicedSignal((*read_tr).second); //JY_Modified_RD
 			domains[stream_id]->Read_transactions_behind_LPA_barrier.erase(read_tr);
+			//ftl->PHY->public_broadcastTransactionServicedSignal((*read_tr).second); //JY_Modified_RD
+			//delete (*read_tr).second;
+			int post_read = domains[stream_id]->Read_transactions_behind_LPA_barrier.size();
+			post_read++;
+			if (prev_read != post_read) {
+				printf("Debug: Something wrong\n");
+			}
+
+
 			read_tr = domains[stream_id]->Read_transactions_behind_LPA_barrier.find(lpa);
+			//ftl->GC_and_WL_Unit->handle_transaction_serviced_signal_from_PHY
 		}
 
 		//If there are write requests waiting behind the barrier, then MQSim assumes they can be serviced with the actual page data that is accessed during GC execution. This may not be 100% true for all write requests, but, to avoid more complexity in the simulation, we accept this assumption.
 		auto write_tr = domains[stream_id]->Write_transactions_behind_LPA_barrier.find(lpa);
 		while (write_tr != domains[stream_id]->Write_transactions_behind_LPA_barrier.end()) {
-			handle_transaction_serviced_signal_from_PHY((*write_tr).second);
-			delete (*write_tr).second;
+			//ftl->GC_and_WL_Unit->public_handle_transaction_serviced_signal_from_PHY((*write_tr).second); //JY_Modified_RD
+			int prev_write = domains[stream_id]->Write_transactions_behind_LPA_barrier.size();
+
+			ftl->PHY->public_broadcastTransactionServicedSignal((*write_tr).second); 
 			domains[stream_id]->Write_transactions_behind_LPA_barrier.erase(write_tr);
+			//ftl->PHY->public_broadcastTransactionServicedSignal((*write_tr).second); //JY_Modified_RD
+			//delete (*write_tr).second;
+			
+			int post_write = domains[stream_id]->Write_transactions_behind_LPA_barrier.size();
+			post_write++;
+			if (prev_write != post_write) {
+				printf("Debug: Something wrong_2\n");
+			}
 			write_tr = domains[stream_id]->Write_transactions_behind_LPA_barrier.find(lpa);
 		}
+
+		//int locked_read = domains[stream_id]->Read_transactions_behind_LPA_barrier.size(); //JY_Modified_Debug
+		//int locked_write = domains[stream_id]->Write_transactions_behind_LPA_barrier.size(); //JY_Modified_Debug
+		//printf("Debug: Locked transactions: %d   ", locked_read + locked_write);
+		//int num_locked_lpas = domains[stream_id]->Locked_LPAs.size();
+		//printf("Num_locked_lpas: %d\n", num_locked_lpas);
 	}
 
 	inline void Address_Mapping_Unit_Page_Level::Remove_barrier_for_accessing_mvpn(stream_id_type stream_id, MVPN_type mvpn)
@@ -1889,12 +1936,15 @@ namespace SSD_Components
 
 	inline void Address_Mapping_Unit_Page_Level::manage_user_transaction_facing_barrier(NVM_Transaction_Flash* transaction)
 	{
+		transaction->FLIN_Barrier = true; //JY_Modified_Debug
 		std::pair<LPA_type, NVM_Transaction_Flash*> entry(transaction->LPA, transaction);
 		if (transaction->Type == Transaction_Type::READ) {
 			domains[transaction->Stream_id]->Read_transactions_behind_LPA_barrier.insert(entry);
 		} else {
 			domains[transaction->Stream_id]->Write_transactions_behind_LPA_barrier.insert(entry);
 		}
+		//printf("Debug: Locked trasnaction size: %lu\n", domains[transaction->Stream_id]->Locked_LPAs.size());
+
 	}
 
 	inline void Address_Mapping_Unit_Page_Level::manage_mapping_transaction_facing_barrier(stream_id_type stream_id, MVPN_type mvpn, bool read)

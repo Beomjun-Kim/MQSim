@@ -99,7 +99,7 @@ namespace MQSimEngine
 			_EventList->Remove(minNode);
 		}
 	}
-
+	
 	void Engine::Stop_simulation()
 	{
 		stop = true;

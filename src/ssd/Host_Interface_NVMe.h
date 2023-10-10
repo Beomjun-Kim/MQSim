@@ -54,6 +54,8 @@ public:
 	void Handle_new_arrived_request(User_Request *request);
 	void Handle_arrived_write_data(User_Request *request);
 	void Handle_serviced_request(User_Request *request);
+	int get_outstanding_requests(); //JY_Modified_Debug
+	int get_submitted_requests(); //JY_Modified_Debug
 	uint16_t Get_submission_queue_depth(stream_id_type stream_id);
 	uint16_t Get_completion_queue_depth(stream_id_type stream_id);
 	IO_Flow_Priority_Class::Priority Get_priority_class(stream_id_type stream_id);

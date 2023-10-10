@@ -143,6 +143,18 @@ void TSU_OutOfOrder::Report_results_in_XML(std::string name_prefix, Utils::XmlWr
 
 void TSU_OutOfOrder::Schedule()
 {
+	
+
+
+	//printf("Debug: opened_scheduling_reqs: %d\n", opened_scheduling_reqs); //JY_Modified_RD
+	//printf("Debug: transaction slot size: %lu\n", transaction_receive_slots.size()); //JY_Modified_RD
+
+	/*
+	if (transaction_receive_slots.size() > 1) {
+		printf("Debug: transaction slot size: %lu\n", transaction_receive_slots.size());
+	}
+	*/
+
 	opened_scheduling_reqs--;
 	if (opened_scheduling_reqs > 0)
 	{
@@ -224,6 +236,14 @@ void TSU_OutOfOrder::Schedule()
 	}
 }
 
+int TSU_OutOfOrder::get_size_of_requests(NVM::FlashMemory::Flash_Chip* chip) //JY_Modified_Debug
+{
+	int read_req = UserReadTRQueue[chip->ChannelID][chip->ChipID].size();
+	int write_req = UserWriteTRQueue[chip->ChannelID][chip->ChipID].size();
+
+	return (read_req + write_req);
+}
+
 bool TSU_OutOfOrder::service_read_transaction(NVM::FlashMemory::Flash_Chip *chip)
 {
 	Flash_Transaction_Queue *sourceQueue1 = NULL, *sourceQueue2 = NULL;
@@ -269,11 +289,9 @@ bool TSU_OutOfOrder::service_read_transaction(NVM::FlashMemory::Flash_Chip *chip
 		{
 			return false;
 		}
-	}
-	else
+	}else
 	{
 		//If GC is currently executed in the preemptive mode, then user IO transaction queues are checked first
-
 		if (UserReadTRQueue[chip->ChannelID][chip->ChipID].size() > 0)
 		{
 			sourceQueue1 = &UserReadTRQueue[chip->ChannelID][chip->ChipID];

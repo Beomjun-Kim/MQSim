@@ -31,7 +31,16 @@ namespace SSD_Components
 		if (block_pool_gc_threshold < max_ongoing_gc_reqs_per_plane) {
 			block_pool_gc_threshold = max_ongoing_gc_reqs_per_plane;
 		}
+		
+		rr_occurred = 0; //JY_Modified_RD
+		rr_registered = 0; //JY_Modified_RD
+		erase_occurred = 0;
 	}
+
+	void GC_and_WL_Unit_Base::public_handle_transaction_serviced_signal_from_PHY(NVM_Transaction_Flash* transaction) {
+		printf("Debug: Desired\n");
+		_my_instance->handle_transaction_serviced_signal_from_PHY(transaction);
+	} //JY_Modified_RD
 
 	void GC_and_WL_Unit_Base::Setup_triggers()
 	{
@@ -39,9 +48,31 @@ namespace SSD_Components
 		flash_controller->ConnectToTransactionServicedSignal(handle_transaction_serviced_signal_from_PHY);
 	}
 
+	void GC_and_WL_Unit_Base::adjust_gc_threshold() //JY_Modified_GC_Start
+	{
+		PlaneBookKeepingType* pbke = &(_my_instance->block_manager->plane_manager[0][0][0][0]);
+		unsigned int free_block_size = pbke->Get_free_block_pool_size();
+
+		printf("Free block pool size: %u\n",free_block_size);
+		printf("GC block threshold: %u\n", block_pool_gc_threshold);
+
+
+		if(free_block_size > (block_pool_gc_threshold + 10)){ //JY_Modified_GC_Start
+			block_pool_gc_threshold = free_block_size - 3;
+		}
+
+		//block_pool_gc_threshold = free_block_size - 3;
+
+	} //JY_Modified_GC_End
+
+
 	void GC_and_WL_Unit_Base::handle_transaction_serviced_signal_from_PHY(NVM_Transaction_Flash* transaction)
 	{
 		PlaneBookKeepingType* pbke = &(_my_instance->block_manager->plane_manager[transaction->Address.ChannelID][transaction->Address.ChipID][transaction->Address.DieID][transaction->Address.PlaneID]);
+
+		//if(transaction->FLIN_Barrier == true){ //JY_Modified_Debug
+		//	return;
+		//} 
 
 		switch (transaction->Source) {
 			case Transaction_Source_Type::USERIO:
@@ -50,7 +81,9 @@ namespace SSD_Components
 				switch (transaction->Type)
 				{
 					case Transaction_Type::READ:
-						_my_instance->block_manager->Read_transaction_serviced(transaction->Address);
+						if(transaction->FLIN_Barrier != true){ //JY_Modified_Debug
+							_my_instance->block_manager->Read_transaction_serviced(transaction->Address);
+						}
 						break;
 					case Transaction_Type::WRITE:
 						_my_instance->block_manager->Program_transaction_serviced(transaction->Address);
@@ -60,6 +93,14 @@ namespace SSD_Components
 				}
 				if (_my_instance->block_manager->Block_has_ongoing_gc_wl(transaction->Address)) {
 					if (_my_instance->block_manager->Can_execute_gc_wl(transaction->Address)) {
+						
+						if(transaction->FLIN_Barrier == true){
+							return;
+						}
+
+						_my_instance->rr_occurred++;
+						//printf("Debug: occurred_rr: %d\n", _my_instance->rr_occurred);
+						//printf("CH: %u, Chip: %u, Plane: %u, Block: %u\n",transaction->Address.ChannelID,transaction->Address.ChipID,transaction->Address.PlaneID,transaction->Address.BlockID);
 						NVM::FlashMemory::Physical_Page_Address gc_wl_candidate_address(transaction->Address);
 						Block_Pool_Slot_Type* block = &pbke->Blocks[transaction->Address.BlockID];
 						Stats::Total_gc_executions++;
@@ -95,6 +136,7 @@ namespace SSD_Components
 							}
 						}
 						block->Erase_transaction = gc_wl_erase_tr;
+						_my_instance->tsu->Submit_transaction(gc_wl_erase_tr); //JY_Modified_RD
 						_my_instance->tsu->Schedule();
 					}
 				}
@@ -124,7 +166,7 @@ namespace SSD_Components
 					}
 				} else {
 					_my_instance->address_mapping_unit->Get_data_mapping_info_for_gc(transaction->Stream_id, transaction->LPA, ppa, page_status_bitmap);
-					
+					//printf("Read complete: %u\n",transaction->Address.PageID); //JY_Modified_Debug
 					//There has been no write on the page since GC start, and it is still valid
 					if (ppa == transaction->PPA) {
 						_my_instance->tsu->Prepare_for_transaction_submit();
@@ -145,13 +187,26 @@ namespace SSD_Components
 					_my_instance->address_mapping_unit->Remove_barrier_for_accessing_mvpn(transaction->Stream_id, (MVPN_type)transaction->LPA);
 					DEBUG(Simulator->Time() << ": MVPN=" << (MVPN_type)transaction->LPA << " unlocked!!");
 				} else {
+					//printf("Write complete: %u\n",transaction->Address.PageID); //JY_Modified_Debug
+					pbke->Blocks[((NVM_Transaction_Flash_WR*)transaction)->RelatedErase->Address.BlockID].Erase_transaction->Page_movement_activities.remove((NVM_Transaction_Flash_WR*)transaction);
 					_my_instance->address_mapping_unit->Remove_barrier_for_accessing_lpa(transaction->Stream_id, transaction->LPA);
 					DEBUG(Simulator->Time() << ": LPA=" << (MVPN_type)transaction->LPA << " unlocked!!");
 				}
-				pbke->Blocks[((NVM_Transaction_Flash_WR*)transaction)->RelatedErase->Address.BlockID].Erase_transaction->Page_movement_activities.remove((NVM_Transaction_Flash_WR*)transaction);
 				break;
 			case Transaction_Type::ERASE:
+				if(_my_instance->erase_occurred == 933){
+					printf("Enter stuck point\n");
+				}
 				pbke->Ongoing_erase_operations.erase(pbke->Ongoing_erase_operations.find(transaction->Address.BlockID));
+				if(_my_instance->erase_occurred == 933){
+					printf("Leave stuck point\n");
+				}
+			
+				//printf("Debug: Ongoing_erase_operation 2: %u\n", pbke->Ongoing_erase_operations.size()); //JY_Modified_RD
+				_my_instance->erase_occurred++;
+				//printf("Debug: erase occurred: %d\n", _my_instance->erase_occurred);
+				//_my_instance->rr_registered--; //JY_Modified
+				//printf("Debug: after_registered_rr: %d\n", _my_instance->rr_registered); //JY_Modified
 				_my_instance->block_manager->Add_erased_block_to_pool(transaction->Address);
 				_my_instance->block_manager->GC_WL_finished(transaction->Address);
 				if (_my_instance->check_static_wl_required(transaction->Address)) {

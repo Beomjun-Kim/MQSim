@@ -65,6 +65,9 @@ namespace SSD_Components
 		virtual void Convert_ppa_to_address(const PPA_type ppa, NVM::FlashMemory::Physical_Page_Address& address) = 0;
 		virtual PPA_type Convert_address_to_ppa(const NVM::FlashMemory::Physical_Page_Address& pageAddress) = 0;
 
+		unsigned int num_set_barriers = 0; //JY_Modified_Debug
+		unsigned int num_remove_barriers = 0; //JY_Modified_Debug
+
 		/*********************************************************************************************************************
 		 These are system state consistency control functions that are used for garbage collection and wear-leveling execution.
 		 Once the GC_and_WL_Unit_Base starts moving a logical page (LPA) from one physical location to another physcial

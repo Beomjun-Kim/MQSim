@@ -34,6 +34,8 @@ namespace Host_Components
 					return;
 				}
 				Simulator->Register_sim_event(Simulator->Time() + estimate_transfer_time(message), this, (void*)(intptr_t)PCIe_Destination_Type::HOST, static_cast<int>(PCIe_Link_Event_Type::DELIVER));
+				
+			
 				break;
 			case PCIe_Destination_Type::DEVICE://Message from Host to the SSD device
 				Message_buffer_toward_ssd_device.push(message);

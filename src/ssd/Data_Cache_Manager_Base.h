@@ -37,10 +37,11 @@ namespace SSD_Components
 		void Connect_to_user_memory_transaction_serviced_signal(MemoryTransactionServicedSignalHanderType);
 		void Set_host_interface(Host_Interface_Base* host_interface);
 		virtual void Do_warmup(std::vector<Utils::Workload_Statistics*> workload_stats) = 0;
+		NVM_Firmware* nvm_firmware; //JY_Modified_GC
 	protected:
 		static Data_Cache_Manager_Base* _my_instance;
 		Host_Interface_Base* host_interface;
-		NVM_Firmware* nvm_firmware;
+		//NVM_Firmware* nvm_firmware; //JY_Modified_GC
 		unsigned int dram_row_size;//The size of the DRAM rows in bytes
 		unsigned int dram_data_rate;//in MT/s
 		unsigned int dram_busrt_size;

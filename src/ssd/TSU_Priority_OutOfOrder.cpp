@@ -332,6 +332,12 @@ Flash_Transaction_Queue *TSU_Priority_OutOfOrder::get_next_read_service_queue(NV
     return NULL;
 }
 
+int TSU_Priority_OutOfOrder::get_size_of_requests(NVM::FlashMemory::Flash_Chip* chip) //JY_Modified_Debug
+{
+    return 0; //Unimplemented
+}
+
+
 bool TSU_Priority_OutOfOrder::service_read_transaction(NVM::FlashMemory::Flash_Chip *chip)
 {
     Flash_Transaction_Queue *sourceQueue1 = NULL, *sourceQueue2 = NULL;

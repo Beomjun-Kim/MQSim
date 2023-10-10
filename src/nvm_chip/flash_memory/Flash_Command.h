@@ -37,6 +37,7 @@ namespace NVM
 			command_code_type CommandCode;
 			std::vector<Physical_Page_Address> Address;
 			std::vector<PageMetadata> Meta_data;
+			uint64_t RR_step; //JY_Modified
 		};
 	}
 }

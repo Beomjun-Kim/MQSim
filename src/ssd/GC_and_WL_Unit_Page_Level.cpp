@@ -42,7 +42,12 @@ namespace SSD_Components
 
 	void GC_and_WL_Unit_Page_Level::Check_gc_required(const unsigned int free_block_pool_size, const NVM::FlashMemory::Physical_Page_Address& plane_address)
 	{
+		//if(rr_registered > 1000){
+		//	printf("Free block pool size: %u, Block pool_gc_threshold: %u\n",free_block_pool_size,block_pool_gc_threshold);
+		//}
+
 		if (free_block_pool_size < block_pool_gc_threshold) {
+			//printf("Debug: GC entry point\n"); //JY_Modified
 			flash_block_ID_type gc_candidate_block_id = block_manager->Get_coldest_block_id(plane_address);
 			PlaneBookKeepingType* pbke = block_manager->Get_plane_bookkeeping_entry(plane_address);
 
@@ -144,13 +149,34 @@ namespace SSD_Components
 				return;
 			}
 			
+			/* //JY_Modified Start
 			//Run the state machine to protect against race condition
 			block_manager->GC_WL_started(gc_candidate_address);
 			pbke->Ongoing_erase_operations.insert(gc_candidate_block_id);
 			address_mapping_unit->Set_barrier_for_accessing_physical_block(gc_candidate_address);//Lock the block, so no user request can intervene while the GC is progressing
-			
+			*/ //JY_Modified End
+
+
+			//JY_Modified Start			
+			//Run the state machine to protect against race condition
+			block_manager->GC_WL_started(gc_candidate_address);
+			pbke->Ongoing_erase_operations.insert(gc_candidate_block_id);
+			address_mapping_unit->Set_barrier_for_accessing_physical_block(gc_candidate_address);//Lock the block, so no user request can intervene while the GC is progressing
+			//JY_Modified End
+
+
 			//If there are ongoing requests targeting the candidate block, the gc execution should be postponed
 			if (block_manager->Can_execute_gc_wl(gc_candidate_address)) {
+				//printf("Debug: GC occurred\n"); //JY_Modified
+				
+				
+				//JY_Modified Start			
+				//Run the state machine to protect against race condition
+				//block_manager->GC_WL_started(gc_candidate_address);
+				//pbke->Ongoing_erase_operations.insert(gc_candidate_block_id);
+				//address_mapping_unit->Set_barrier_for_accessing_physical_block(gc_candidate_address);//Lock the block, so no user request can intervene while the GC is progressing
+				//JY_Modified End
+				
 				Stats::Total_gc_executions++;
 				tsu->Prepare_for_transaction_submit();
 
@@ -189,4 +215,58 @@ namespace SSD_Components
 			}
 		}
 	}
+
+	//JY_Modified_RD start
+	//void GC_and_WL_Unit_Page_Level::Check_rr_required(const unsigned int free_block_pool_size, const NVM::FlashMemory::Physical_Page_Address& plane_address)
+	void GC_and_WL_Unit_Page_Level::Check_rr_required(const NVM::FlashMemory::Physical_Page_Address& page_address)
+	{
+		PlaneBookKeepingType* plane_record = &(block_manager->plane_manager[page_address.ChannelID][page_address.ChipID][page_address.DieID][page_address.PlaneID]);
+
+
+		//printf("Max ongoing: %d\n",max_ongoing_gc_reqs_per_plane);
+	
+		if (plane_record->Blocks[page_address.BlockID].read_count < 100000)
+			return;
+
+		if (plane_record->Ongoing_erase_operations.size() >= max_ongoing_gc_reqs_per_plane) {
+			return;
+		}
+
+	
+	
+		if (  !(plane_record->Blocks[page_address.BlockID].Current_page_write_index == pages_no_per_block)
+			|| !(is_safe_gc_wl_candidate( plane_record, page_address.BlockID))) {
+			return;
+		}
+
+
+		Block_Pool_Slot_Type* block = &plane_record->Blocks[page_address.BlockID];
+
+		//This should never happen, but we check it here for safty
+		if (plane_record->Ongoing_erase_operations.find(page_address.BlockID) != plane_record->Ongoing_erase_operations.end()) {
+			return;
+		}
+
+		//JY_Modified Start			
+		//Run the state machine to protect against race condition
+		block_manager->GC_WL_started(page_address);
+		plane_record->Ongoing_erase_operations.insert(page_address.BlockID);
+		address_mapping_unit->Set_barrier_for_accessing_physical_block(page_address);//Lock the block, so no user request can intervene while the GC is progressing
+		//JY_Modified End
+		//printf("Debug: RR is registered\n");
+		rr_registered++; //JY_Modified RD
+		//unsigned int block_id = 
+		//printf("Debug: registered_rr: %d, CH: %u, Chip: %u, Plane: %u, Block: %u\n", rr_registered,page_address.ChannelID,page_address.ChipID,page_address.PlaneID,page_address.BlockID); //JY_Modified_RD
+		if(page_address.ChannelID == 0 && page_address.ChipID == 0 && page_address.PlaneID == 0 && page_address.BlockID == 0){
+			printf("Deadlock point\n");
+		}
+
+
+		//If there are ongoing requests targeting the candidate block, the gc execution should be postponed
+		//if (block_manager->Can_execute_gc_wl(page_address)) {
+		//	printf("Debug: This should be never happened\n"); //JY_Modified
+		//}
+	}
+	//JY_Modified_RD end
+	
 }

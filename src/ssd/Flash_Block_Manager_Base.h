@@ -43,6 +43,7 @@ namespace SSD_Components
 		bool Hot_block = false;//Used for hot/cold separation mentioned in the "On the necessity of hot and cold data identification to reduce the write amplification in flash-based SSDs", Perf. Eval., 2014.
 		int Ongoing_user_read_count;
 		int Ongoing_user_program_count;
+		int read_count; //JY_Modified_RD
 		void Erase();
 	};
 
@@ -75,6 +76,7 @@ namespace SSD_Components
 			unsigned int channel_count, unsigned int chip_no_per_channel, unsigned int die_no_per_chip, unsigned int plane_no_per_die,
 			unsigned int block_no_per_plane, unsigned int page_no_per_block);
 		virtual ~Flash_Block_Manager_Base();
+		virtual void Allocate_block_and_page_in_plane_for_online_write(const stream_id_type streamID, NVM::FlashMemory::Physical_Page_Address& address) = 0; //JY_Modified
 		virtual void Allocate_block_and_page_in_plane_for_user_write(const stream_id_type streamID, NVM::FlashMemory::Physical_Page_Address& address) = 0;
 		virtual void Allocate_block_and_page_in_plane_for_gc_write(const stream_id_type streamID, NVM::FlashMemory::Physical_Page_Address& address) = 0;
 		virtual void Allocate_block_and_page_in_plane_for_translation_write(const stream_id_type streamID, NVM::FlashMemory::Physical_Page_Address& address, bool is_for_gc) = 0;
@@ -91,7 +93,7 @@ namespace SSD_Components
 		bool Can_execute_gc_wl(const NVM::FlashMemory::Physical_Page_Address& block_address);//Checks if the gc request can be executed on block_address (there shouldn't be any ongoing user read/program requests targeting block_address)
 		void GC_WL_started(const NVM::FlashMemory::Physical_Page_Address& block_address);//Updates the block bookkeeping record
 		void GC_WL_finished(const NVM::FlashMemory::Physical_Page_Address& block_address);//Updates the block bookkeeping record
-		void Read_transaction_issued(const NVM::FlashMemory::Physical_Page_Address& page_address);//Updates the block bookkeeping record
+		void Read_transaction_issued(const NVM::FlashMemory::Physical_Page_Address& page_address, int is_rr);//Updates the block bookkeeping record JY_Modified_RD
 		void Read_transaction_serviced(const NVM::FlashMemory::Physical_Page_Address& page_address);//Updates the block bookkeeping record
 		void Program_transaction_serviced(const NVM::FlashMemory::Physical_Page_Address& page_address);//Updates the block bookkeeping record
 		bool Is_having_ongoing_program(const NVM::FlashMemory::Physical_Page_Address& block_address);//Cheks if block has any ongoing program request

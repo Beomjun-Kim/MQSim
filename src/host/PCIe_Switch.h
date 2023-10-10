@@ -21,9 +21,10 @@ namespace Host_Components
 		void Send_to_host(PCIe_Message*);
 		void Attach_ssd_device(SSD_Components::Host_Interface_Base* host_interface);
 		bool Is_ssd_connected();
+		SSD_Components::Host_Interface_Base* host_interface; //JY_Modified_GC
 	private:
 		PCIe_Link* pcie_link;
-		SSD_Components::Host_Interface_Base* host_interface;
+		//SSD_Components::Host_Interface_Base* host_interface; //JY_Modified_GC
 	};
 }
 #endif //!PCIE_SWITCH_H

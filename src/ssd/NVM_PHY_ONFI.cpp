@@ -22,6 +22,11 @@ namespace SSD_Components {
 		delete transaction;//This transaction has been consumed and no more needed
 	}
 
+	void NVM_PHY_ONFI::public_broadcastTransactionServicedSignal(NVM_Transaction_Flash* transaction) {
+		broadcastTransactionServicedSignal(transaction);
+	}
+
+
 	void NVM_PHY_ONFI::ConnectToChannelIdleSignal(ChannelIdleHandlerType function)
 	{
 		connectedChannelIdleHandlers.push_back(function);

@@ -32,6 +32,11 @@ namespace SSD_Components
 		Stats::Clear_stats(channel_no, chip_no_per_channel, die_no_per_chip, plane_no_per_die, block_no_per_plane, page_no_per_block, max_allowed_block_erase_count);
 	}
 
+	void FTL::inform_replay() //JY_Modified_GC
+	{
+		GC_and_WL_Unit->adjust_gc_threshold();  
+	}
+
 	void FTL::Validate_simulation_config()
 	{
 		NVM_Firmware::Validate_simulation_config();
@@ -432,7 +437,7 @@ namespace SSD_Components
 			//Note: if hot/cold separation is required, then the following estimations should be changed according to Van Houtd's paper in Performance Evaluation 2014.
 			std::vector<double> steadystate_block_status_probability;//The probability distribution function of the number of valid pages in a block in the steadystate
 			double rho = stat->Initial_occupancy_ratio * (1 - over_provisioning_ratio) / (1 - double(GC_and_WL_Unit->Get_minimum_number_of_free_pages_before_GC()) / block_no_per_plane);
-			switch (decision_dist_type) {
+			switch (stat->Address_distribution_type) {
 			case Utils::Address_Distribution_Type::RANDOM_HOTCOLD://Estimate the steady-state of the hot/cold traffic based on the steady-state of the uniform traffic
 			{
 				double r_to_f_ratio = std::sqrt(double(stat->Ratio_of_traffic_accessing_hot_region) / double(stat->Ratio_of_hot_addresses_to_whole_working_set));

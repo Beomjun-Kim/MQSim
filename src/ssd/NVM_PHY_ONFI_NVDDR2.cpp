@@ -70,6 +70,12 @@ namespace SSD_Components {
 		return channels[channelID]->Chips[chipID];
 	}
 
+        void NVM_PHY_ONFI_NVDDR2::Set_metadata(flash_channel_ID_type channel_id, flash_chip_ID_type chip_id, flash_die_ID_type die_id, flash_plane_ID_type plane_id, flash_block_ID_type block_id, flash_page_ID_type page_id, LPA_type lpa) {
+                channels[channel_id]->Chips[chip_id]->Set_metadata(die_id, plane_id, block_id, page_id, lpa);
+
+        } //JY_Modified
+	
+
 	LPA_type NVM_PHY_ONFI_NVDDR2::Get_metadata(flash_channel_ID_type channe_id, flash_chip_ID_type chip_id, flash_die_ID_type die_id, flash_plane_ID_type plane_id, flash_block_ID_type block_id, flash_page_ID_type page_id)//A simplification to decrease the complexity of GC execution! The GC unit may need to know the metadata of a page to decide if a page is valid or invalid. 
 	{
 		return channels[channe_id]->Chips[chip_id]->Get_metadata(die_id, plane_id, block_id, page_id);
@@ -176,6 +182,7 @@ namespace SSD_Components {
 			NVM::FlashMemory::PageMetadata metadata;
 			metadata.LPA = (*it)->LPA;
 			dieBKE->ActiveCommand->Meta_data.push_back(metadata);
+			dieBKE->ActiveCommand->RR_step = 0; //JY_Modified
 		}
 
 		switch (transaction_list.front()->Type) {
@@ -200,6 +207,7 @@ namespace SSD_Components {
 					chipBKE->Last_transfer_finish_time = Simulator->Time() + suspendTime + target_channel->ReadCommandTime[transaction_list.size()];
 					Simulator->Register_sim_event(Simulator->Time() + suspendTime + target_channel->ReadCommandTime[transaction_list.size()], this,
 						dieBKE, (int)NVDDR2_SimEventType::READ_CMD_ADDR_TRANSFERRED);
+
 				} else {
 					dieBKE->DieInterleavedTime = suspendTime + target_channel->ReadCommandTime[transaction_list.size()];
 					chipBKE->Last_transfer_finish_time += suspendTime + target_channel->ReadCommandTime[transaction_list.size()];
@@ -394,6 +402,28 @@ namespace SSD_Components {
 				break;
 			case NVDDR2_SimEventType::READ_DATA_TRANSFERRED:
 				//DEBUG2("Chip " << targetChip->ChannelID << ", " << targetChip->ChipID << ", " << dieBKE->ActiveTransactions.front()->Address.DieID << ": READ_DATA_TRANSFERRED ")
+				
+				/*JY Modified Start*/
+				if (dieBKE->ActiveCommand->RR_step > 0) {
+					dieBKE->ActiveTransfer = NULL;
+					chipBKE->WaitingReadTXCount--;
+					dieBKE->ActiveCommand->CommandCode = CMD_READ_PAGE;
+					targetChip->StartCMDXfer();
+					chipBKE->Status = ChipStatus::CMD_IN;
+					chipBKE->Last_transfer_finish_time = Simulator->Time() + targetChannel->ReadCommandTime[1];
+					Simulator->Register_sim_event(Simulator->Time() + targetChannel->ReadCommandTime[1], this,
+						dieBKE, (int)NVDDR2_SimEventType::READ_CMD_ADDR_TRANSFERRED);
+					chipBKE->OngoingDieCMDTransfers.push(dieBKE);
+					dieBKE->Expected_finish_time = chipBKE->Last_transfer_finish_time + targetChip->Get_command_execution_latency(dieBKE->ActiveCommand->CommandCode, dieBKE->ActiveCommand->Address[0].PageID);
+					if (chipBKE->Expected_command_exec_finish_time < dieBKE->Expected_finish_time) {
+						chipBKE->Expected_command_exec_finish_time = dieBKE->Expected_finish_time;
+					}
+					dieBKE->ActiveCommand->RR_step--;
+					return;
+				}
+				/*JY Modified End*/
+				
+				
 				targetChip->EndDataOutXfer(dieBKE->ActiveCommand);
 				copy_read_data_to_transaction((NVM_Transaction_Flash_RD*)dieBKE->ActiveTransfer, dieBKE->ActiveCommand);
 	#if 0
@@ -427,6 +457,15 @@ namespace SSD_Components {
 					}
 				}
 				targetChannel->SetStatus(BusChannelStatus::IDLE, targetChip);
+
+				_my_instance->broadcastChipIdleSignal(targetChip); //JY_Modified
+
+				if (targetChannel->GetStatus() != BusChannelStatus::IDLE) {
+					return;
+				} //JY_Modified
+
+
+
 				break;
 			default:
 				PRINT_ERROR("Unknown simulation event specified for NVM_PHY_ONFI_NVDDR2!")
@@ -468,14 +507,14 @@ namespace SSD_Components {
 				&(bookKeepingTable[channel_id][waitingTR->Address.ChipID].Die_book_keeping_records[waitingTR->Address.DieID]), waitingTR);
 
 			return;
-		} else if (WaitingReadTX[channel_id].size() > 0) {
+		} else if (WaitingReadTX[channel_id].size() > 0 && this->channels[channel_id]->GetStatus() == BusChannelStatus::IDLE) { //JY_Modified
 			NVM_Transaction_Flash_RD* waitingTR = (NVM_Transaction_Flash_RD*)WaitingReadTX[channel_id].front();
 			WaitingReadTX[channel_id].pop_front();
 			transfer_read_data_from_chip(&bookKeepingTable[channel_id][waitingTR->Address.ChipID],
 				&(bookKeepingTable[channel_id][waitingTR->Address.ChipID].Die_book_keeping_records[waitingTR->Address.DieID]), waitingTR);
-
+			
 			return;
-		} else if (WaitingGCRead_TX[channel_id].size() > 0) {
+		} else if (WaitingGCRead_TX[channel_id].size() > 0  && this->channels[channel_id]->GetStatus() == BusChannelStatus::IDLE) { //JY_Modified
 			NVM_Transaction_Flash_RD* waitingTR = (NVM_Transaction_Flash_RD*)WaitingGCRead_TX[channel_id].front();
 			WaitingGCRead_TX[channel_id].pop_front();
 			transfer_read_data_from_chip(&bookKeepingTable[channel_id][waitingTR->Address.ChipID],
@@ -486,6 +525,7 @@ namespace SSD_Components {
 		//If the execution reaches here, then the bus channel became idle
 		broadcastChannelIdleSignal(channel_id);
 	}
+
 
 	inline void NVM_PHY_ONFI_NVDDR2::handle_ready_signal_from_chip(NVM::FlashMemory::Flash_Chip* chip, NVM::FlashMemory::Flash_Command* command)
 	{
@@ -622,12 +662,17 @@ namespace SSD_Components {
 
 	inline void NVM_PHY_ONFI_NVDDR2::transfer_read_data_from_chip(ChipBookKeepingEntry* chipBKE, DieBookKeepingEntry* dieBKE, NVM_Transaction_Flash* tr)
 	{
-		//DEBUG2("Chip " << tr->Address.ChannelID << ", " << tr->Address.ChipID << ": transfer read data started for LPA: " << tr->LPA)
 		dieBKE->ActiveTransfer = tr;
 		channels[tr->Address.ChannelID]->Chips[tr->Address.ChipID]->StartDataOutXfer();
 		chipBKE->Status = ChipStatus::DATA_OUT;
-		Simulator->Register_sim_event(Simulator->Time() + NVDDR2DataOutTransferTime(tr->Data_and_metadata_size_in_byte, channels[tr->Address.ChannelID]),
+
+		//sim_time_type transfer_time = 7500;// 2.4GBps 16K+OOB    JY_Modified
+		sim_time_type transfer_time = 15000;// 1.2GBps 16K+OOB 
+		
+		
+		Simulator->Register_sim_event(Simulator->Time() + transfer_time,
 			this, dieBKE, (int)NVDDR2_SimEventType::READ_DATA_TRANSFERRED);
+		
 
 		tr->STAT_transfer_time += NVDDR2DataOutTransferTime(tr->Data_and_metadata_size_in_byte, channels[tr->Address.ChannelID]);
 		channels[tr->Address.ChannelID]->SetStatus(BusChannelStatus::BUSY, channels[tr->Address.ChannelID]->Chips[tr->Address.ChipID]);
@@ -636,9 +681,10 @@ namespace SSD_Components {
 	void NVM_PHY_ONFI_NVDDR2::perform_interleaved_cmd_data_transfer(NVM::FlashMemory::Flash_Chip* chip, DieBookKeepingEntry* bookKeepingEntry)
 	{
 		ONFI_Channel_NVDDR2* target_channel = channels[bookKeepingEntry->ActiveTransactions.front()->Address.ChannelID];
-		/*if (target_channel->Status == BusChannelStatus::BUSY)
-			PRINT_ERROR("Requesting communication on a busy bus!")*/
+		if (target_channel->GetStatus() == BusChannelStatus::BUSY)
+			PRINT_ERROR("Requesting communication on a busy bus!") //JY_Modified
 
+		
 		switch (bookKeepingEntry->ActiveTransactions.front()->Type)
 		{
 			case Transaction_Type::READ:

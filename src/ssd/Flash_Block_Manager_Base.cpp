@@ -40,6 +40,7 @@ namespace SSD_Components
 							plane_manager[channelID][chipID][dieID][planeID].Blocks[blockID].Erase_transaction = NULL;
 							plane_manager[channelID][chipID][dieID][planeID].Blocks[blockID].Ongoing_user_program_count = 0;
 							plane_manager[channelID][chipID][dieID][planeID].Blocks[blockID].Ongoing_user_read_count = 0;
+							plane_manager[channelID][chipID][dieID][planeID].Blocks[blockID].read_count = 0; //JY_Modified_RD
 							Block_Pool_Slot_Type::Page_vector_size = pages_no_per_block / (sizeof(uint64_t) * 8) + (pages_no_per_block % (sizeof(uint64_t) * 8) == 0 ? 0 : 1);
 							plane_manager[channelID][chipID][dieID][planeID].Blocks[blockID].Invalid_page_bitmap = new uint64_t[Block_Pool_Slot_Type::Page_vector_size];
 							for (unsigned int i = 0; i < Block_Pool_Slot_Type::Page_vector_size; i++) {
@@ -93,6 +94,7 @@ namespace SSD_Components
 	{
 		Current_page_write_index = 0;
 		Invalid_page_count = 0;
+		read_count = 0; //JY_Modified_RD
 		Erase_count++;
 		for (unsigned int i = 0; i < Block_Pool_Slot_Type::Page_vector_size; i++) {
 			Invalid_page_bitmap[i] = All_VALID_PAGE;
@@ -189,7 +191,19 @@ namespace SSD_Components
 	bool Flash_Block_Manager_Base::Can_execute_gc_wl(const NVM::FlashMemory::Physical_Page_Address& block_address)
 	{
 		PlaneBookKeepingType *plane_record = &plane_manager[block_address.ChannelID][block_address.ChipID][block_address.DieID][block_address.PlaneID];
-		return (plane_record->Blocks[block_address.BlockID].Ongoing_user_program_count + plane_record->Blocks[block_address.BlockID].Ongoing_user_read_count == 0);
+		//return (plane_record->Blocks[block_address.BlockID].Ongoing_user_program_count + plane_record->Blocks[block_address.BlockID].Ongoing_user_read_count == 0);
+		
+		if(plane_record->Blocks[block_address.BlockID].Ongoing_user_read_count < 0){
+			printf("Debug: weired\n");
+		}
+		if (plane_record->Blocks[block_address.BlockID].Ongoing_user_program_count == 0){
+			if (plane_record->Blocks[block_address.BlockID].Ongoing_user_read_count == 0){
+				return true;
+			}
+		}
+		return false;
+		//return (plane_record->Blocks[block_address.BlockID].Ongoing_user_program_count == 0); //JY_Modified_Debug
+
 	}
 	
 	void Flash_Block_Manager_Base::GC_WL_started(const NVM::FlashMemory::Physical_Page_Address& block_address)
@@ -204,10 +218,14 @@ namespace SSD_Components
 		plane_record->Blocks[page_address.BlockID].Ongoing_user_program_count++;
 	}
 	
-	void Flash_Block_Manager_Base::Read_transaction_issued(const NVM::FlashMemory::Physical_Page_Address& page_address)
+	void Flash_Block_Manager_Base::Read_transaction_issued(const NVM::FlashMemory::Physical_Page_Address& page_address, int is_rr) //JY_Modified_RD
 	{
 		PlaneBookKeepingType *plane_record = &plane_manager[page_address.ChannelID][page_address.ChipID][page_address.DieID][page_address.PlaneID];
 		plane_record->Blocks[page_address.BlockID].Ongoing_user_read_count++;
+		plane_record->Blocks[page_address.BlockID].read_count++; //JY_Modified_RD
+		if(is_rr == 0){
+			gc_and_wl_unit->Check_rr_required(page_address); //JY_Modified_RD
+		}
 	}
 
 	void Flash_Block_Manager_Base::Program_transaction_serviced(const NVM::FlashMemory::Physical_Page_Address& page_address)
@@ -219,7 +237,22 @@ namespace SSD_Components
 	void Flash_Block_Manager_Base::Read_transaction_serviced(const NVM::FlashMemory::Physical_Page_Address& page_address)
 	{
 		PlaneBookKeepingType *plane_record = &plane_manager[page_address.ChannelID][page_address.ChipID][page_address.DieID][page_address.PlaneID];
+
+		if(plane_record->Blocks[page_address.BlockID].Ongoing_user_read_count == 0){
+			printf("Ch: %u Chip: %u Plane: %u Block: %u Page: %u\n",page_address.ChannelID,page_address.ChipID,page_address.PlaneID,page_address.BlockID,page_address.PageID);
+			
+			int rc =  plane_record->Blocks[page_address.BlockID].read_count;
+			int pg_count = plane_record->Blocks[page_address.BlockID].Ongoing_user_program_count;
+			int ong_gc = (int)plane_record->Blocks[page_address.BlockID].Has_ongoing_gc_wl;
+			unsigned int ec = plane_record->Blocks[page_address.BlockID].Erase_count;
+
+			printf("Read count: %d, pg_count: %d, has_ongoing_gc: %d, erase_count: %d\n",rc,pg_count,ong_gc,ec);
+		}
 		plane_record->Blocks[page_address.BlockID].Ongoing_user_read_count--;
+		//if(plane_record->Blocks[page_address.BlockID].Ongoing_user_read_count > 0){
+		//	plane_record->Blocks[page_address.BlockID].Ongoing_user_read_count--;
+		//} //JY_Modified_Debug
+
 	}
 	
 	bool Flash_Block_Manager_Base::Is_having_ongoing_program(const NVM::FlashMemory::Physical_Page_Address& block_address)

@@ -117,6 +117,8 @@ void IO_Flow_Trace_Based::Start_simulation()
 		total_requests_to_be_generated = total_requests_in_file * total_replay_no;
 	}
 
+	printf("Debug: Total requests to be generated: %u\n", total_requests_to_be_generated); //JY_Modified_Debug
+
 	trace_file.open(trace_file_path);
 	current_trace_line.clear();
 	std::getline(trace_file, trace_line);
@@ -157,6 +159,11 @@ void IO_Flow_Trace_Based::Execute_simulator_event(MQSimEngine::Sim_Event *)
 			current_trace_line.clear();
 			Utils::Helper_Functions::Tokenize(trace_line, ASCIILineDelimiter, current_trace_line);
 			PRINT_MESSAGE("* Replay round " << replay_counter << "of " << total_replay_no << " started  for" << ID())
+
+			pcie_root_complex->pcie_link->pcie_switch->host_interface->cache->nvm_firmware->inform_replay(); //JY_Modified_GC
+
+			////JY_Modified_GC
+			
 		}
 		char *pEnd;
 		Simulator->Register_sim_event(time_offset + std::strtoll(current_trace_line[ASCIITraceTimeColumn].c_str(), &pEnd, 10), this);
